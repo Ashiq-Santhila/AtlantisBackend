@@ -100,6 +100,7 @@ const ReacordActivity = async (req, res) => {
     galUserAgent: req.headers["user-agent"],
     galIpAddress: req.connection.remoteAddress,
     galDeviceType: req.device.type,
+    galAverageScore: data?.galAverageScore,
     // galgameflow:getlastScore.galgameflow,
   }, {
     where: {
@@ -111,7 +112,7 @@ const ReacordActivity = async (req, res) => {
     if (rowCount > 0) {
       console.log(`Update successful. ${rowCount} row(s) updated.`);
       console.log(updatedRows); // This will show the actual updated rows
-      return res.status(200).json({ status: 'Success', message: `Update successful. ${rowCount} row(s) updated.` });
+      return res.status(200).json({ status: 'Success', message: `Update successful. ${rowCount} row(s) updated.`, datas: data });
     } else {
       console.log(`No rows were updated.`);
       return res.status(400).json({ status: 'Failure', message: `No rows were updated.` });

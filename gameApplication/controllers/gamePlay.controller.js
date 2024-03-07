@@ -151,6 +151,26 @@ const getGamePlay = async (req, res) => {
     });
 
 
+    ///Afrith-modified-starts-29/Feb/24///
+    getBadgeImage = await AssetTable.findOne({
+      attributes: [
+        [Sequelize.literal(`CONCAT('${req.protocol}://${req.get('host')}/', gasAssetImage)`), 'gasAssetImage']
+      ],
+      where: {
+        gasId: getGameDetails.gameBadge ? getGameDetails.gameBadge : 1,
+      },
+    });
+
+    let badgeImageUrl;
+    if (getBadgeImage) {
+        badgeImageUrl = getBadgeImage.gasAssetImage;
+    } else {
+        // Handle the case when getBadgeImage is null
+        console.error("No badge image found for the specified gameBadge:", getGameDetails.gameBadge);
+    }
+    ///Afrith-modified-ends-29/Feb/24///
+
+
     getNpcImage = await gameassest.findOne({
       attributes: [
         [Sequelize.literal(`CONCAT('${req.protocol}://${req.get('host')}/', gasAssetImage)`), 'gasAssetImage']
@@ -169,6 +189,7 @@ const getGamePlay = async (req, res) => {
     });
 
     const BackgroundVoiceObject = {
+      BadgeImage : badgeImageUrl ? badgeImageUrl :null,
       BackgroundImage: getImage.gasAssetImage ? getImage.gasAssetImage : null,
       NPCvoice: getGameDetails.gameNonPlayerVoice ? getGameDetails.gameNonPlayerVoice : null,
       ///Afrith-modified-starts-26/Feb/24///
@@ -240,11 +261,18 @@ const getGamePlay = async (req, res) => {
     }
     /*************TakeWay******************** */
     const TakeawaysObject = {
-      gameIsShowTakeaway: getGameDetails.gameTakeawayScreenId ?? null,
+      // gameIsShowTakeaway: getGameDetails.gameTakeawayScreenId ?? null,
+      ///Afrith-modified-starts-01/Mar/24//
+        gameIsShowTakeaway: getGameDetails.gameIsShowTakeaway ?? null,
+        gameTakeawayScreenId: getGameDetails.gameTakeawayScreenId ?? null,
+      ///Afrith-modified-ends-01/Mar/24//
       gameTakeawayContent: getGameDetails.gameTakeawayContent ?? null,
     }
     /*************ThankYou******************** */
     const ThankYouObject = {
+      ///Afrith-modified-starts-01/Mar/23//
+      gameThankYouScreenId: getGameDetails.gameThankYouScreenId ?? null,
+      ///Afrith-modified-ends-01/Mar/23//
       gameThankYouMessage: getGameDetails.gameThankYouMessage ?? null,
       gameIsCollectLearnerFeedback: getGameDetails.gameIsCollectLearnerFeedback ?? null,
       gameContent: getGameDetails.gameContent ?? null,
@@ -556,6 +584,10 @@ const getGamePlay = async (req, res) => {
       gameIsSetMinimumScore: getGameDetails.gameIsSetMinimumScore ?? null,
 
       gameMinScore: getGameDetails.gameMinScore ?? null,
+    
+      gameDistinctionScore:getGameDetails.gameDistinctionScore??null,
+
+      gameIsSetBadge:getGameDetails.gameIsSetBadge??null,
 
       gameaboveMinimumScoreCongratsMessage: getGameDetails.gameaboveMinimumScoreCongratsMessage ?? null,
 
@@ -630,7 +662,7 @@ const getGamePlay = async (req, res) => {
       completionScreen: completionScreen,
       learnerProfile: learnerProfiles,
       Playstatus: getplayStatus,
-      questScore: getQuestList,
+      questScore: getQuestList,      
     });
 
 
@@ -751,6 +783,9 @@ const learnerDasboard = async (req, res) => {
   try {
     const LoginUserId = req.user.user.id;
 
+
+    
+    // GAME COUNTS ****************************************** //
     const getGameCount = await AssignedGames.findAll({
       attributes: ['gaGameId'],
       where: {
@@ -761,22 +796,29 @@ const learnerDasboard = async (req, res) => {
     })
     gameCount = getGameCount.map((item)=> item.gaGameId).length;
 
+
     // Assigned Game Id's
     const assignedGameId = getGameCount.map((item)=> item.gaGameId);
-    
-    const GameDetails = await GameTable.findAll({
+
+
+    // GAME TITLE ****************************************** //
+    const GameTitle = await GameTable.findAll({
       attributes: ['gameTitle'],
       where: {
         gameId: assignedGameId
       },
+      order: [['gameId', 'ASC']]
     })
-    gameName = GameDetails.map((item)=> item.gameTitle);
+    gameName = GameTitle.map((item)=> item.gameTitle);
     
 
+
+    // TOTAL NO OF QUEST ****************************************** //
     const getNoOfQuest = await GameActivityLog.findAll({
       attributes: ['galQuestNo'],
       where: {
         galGameId: assignedGameId,
+        galLearnerId: LoginUserId,
       },
     });
     questNo = getNoOfQuest.map((item)=> item.galQuestNo)    
@@ -785,8 +827,7 @@ const learnerDasboard = async (req, res) => {
 
 
 
-
-
+    // GAME COMPLETION STATUS ****************************************** //
     const getCompleStatus = await GameActivityLog.findAll({
       attributes: ['galGameId', 'galQuestNo', 'galQuestionState'],            
       where: {        
@@ -797,17 +838,46 @@ const learnerDasboard = async (req, res) => {
       group: ['galGameId', 'galQuestNo', 'galQuestionState'], 
       order: [['galQuestionState','ASC']],
       logging: true        
-    });
-    
-
-    
-
+    });        
     completedGame = getCompleStatus.filter((item)=> item.galQuestionState == 'complete').length           
-    totalGameCompleStatus = getCompleStatus.length   
-    
+    totalGameCompleStatus = getCompleStatus.length       
     const getCompletedGame = completedGame
     const getInCompletedGame = Math.abs(completedGame - totalQuest);
 
+
+
+    // GAME SCORES ****************************************** //
+    const getGameScore = await GameActivityLog.findAll({
+      attributes: ['galGameId', 'galQuestNo', 'galQuestionState', 'galAverageScore'],
+      where: {
+        galGameId: assignedGameId,
+        galLearnerId: LoginUserId,
+        galQuestionState: 'complete',        
+        galAverageScore: {
+          [Op.not]: null // Exclude null values for galAverageScore
+        }
+      },
+      group: ['galQuestNo', 'galGameId', 'galQuestionState', 'galAverageScore'],
+      order: [['galGameId','ASC'], ['galQuestNo', 'ASC'], ['galId', 'DESC']],
+      having: Sequelize.literal('MAX(galId)') // Filter to get the maximum galId for each group
+    });
+
+
+    // NO OF GAME PLAY ****************************************** //
+    const getTotalPlay = await GameActivityLog.findAll({
+      attributes: ['galQuestionState'],
+      where: {
+        galGameId: assignedGameId,
+        galLearnerId: LoginUserId,
+      },      
+    })
+    const gamePlayingCount = {
+      completed: getTotalPlay.filter((item)=> item?.galQuestionState == 'complete').length,
+      replayed: getTotalPlay.filter((item)=> item?.galQuestionState == 'replayed').length,
+      started: getTotalPlay.filter((item)=> item?.galQuestionState == 'start').length
+    }
+    
+        
 
 
     let datas = {
@@ -817,10 +887,11 @@ const learnerDasboard = async (req, res) => {
       totalQuest: totalQuest,
       completedGame : getCompletedGame,
       inCompletedGame : getInCompletedGame,
+      totalGamePlayed : gamePlayingCount,
     }
 
-    if (getGameCount) {      
-      return res.status(200).json({ status: 'Success', data: datas, ActivityLog: getCompleStatus });
+    if (datas) {      
+      return res.status(200).json({ status: 'Success', data: datas, activity: getGameScore,});
     }
     else {
       return res.status(200).json({ status: 'Failure', Message: 'LeaderBoard is Empty' });
